@@ -2,7 +2,7 @@ from typing import Any
 
 from flask import request
 from flask_restx import marshal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from werkzeug.exceptions import NotFound
 
@@ -74,6 +74,25 @@ class ChildChunkListQuery(BaseModel):
     limit: int = Field(default=20, ge=1)
     keyword: str | None = None
     page: int = Field(default=1, ge=1)
+
+    @field_validator("page", "limit", mode="before")
+    @classmethod
+    def validate_pagination_params(cls, value):
+        """Validate that page and limit are valid positive integers."""
+        if isinstance(value, str):
+            # Try to convert string to int
+            try:
+                value = int(value)
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid value '{value}'. Must be a positive integer.")
+        
+        if isinstance(value, int):
+            if value < 1:
+                raise ValueError(f"Invalid value '{value}'. Must be a positive integer.")
+            return value
+        
+        # If value is None or not a valid type, return as-is to use default
+        return value
 
 
 register_schema_models(

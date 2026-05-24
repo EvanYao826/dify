@@ -2,7 +2,7 @@ import uuid
 
 from flask import request
 from flask_restx import Resource, marshal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from werkzeug.exceptions import Forbidden, NotFound
@@ -61,6 +61,25 @@ class SegmentListQuery(BaseModel):
     enabled: str = Field(default="all")
     keyword: str | None = None
     page: int = Field(default=1, ge=1)
+
+    @field_validator("page", "limit", mode="before")
+    @classmethod
+    def validate_pagination_params(cls, value):
+        """Validate that page and limit are valid positive integers."""
+        if isinstance(value, str):
+            # Try to convert string to int
+            try:
+                value = int(value)
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid value '{value}'. Must be a positive integer.")
+        
+        if isinstance(value, int):
+            if value < 1:
+                raise ValueError(f"Invalid value '{value}'. Must be a positive integer.")
+            return value
+        
+        # If value is None or not a valid type, return as-is to use default
+        return value
 
 
 class SegmentCreatePayload(BaseModel):
