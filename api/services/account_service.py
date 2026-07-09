@@ -1315,7 +1315,7 @@ class TenantService:
                 member_account_id=account.id,
                 role_ids=[owner_role_id],
             )
-        account.current_tenant = tenant
+        account.set_current_tenant(tenant, session=session)
         session.commit()
         tenant_was_created.send(tenant)
 

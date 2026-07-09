@@ -229,7 +229,7 @@ class MigrationImportService:
             raise MigrationDataError(f"Operator account not found: {target.operator_id}")
         if tenant is None:
             raise MigrationDataError(f"Target tenant not found: {target.tenant_id}")
-        account.current_tenant = tenant
+        account.set_current_tenant(tenant, session=db.session)
 
         for workflow_data in package.workflows:
             app_id = self._optional_string(workflow_data.get("id"))

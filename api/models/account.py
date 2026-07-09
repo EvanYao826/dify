@@ -8,7 +8,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 from flask_login import UserMixin
 from sqlalchemy import DateTime, String, func, select
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column, scoped_session
 from typing_extensions import deprecated
 
 from configs import dify_config
@@ -130,20 +130,45 @@ class Account(UserMixin, TypeBase):
 
     @current_tenant.setter
     def current_tenant(self, tenant: "Tenant"):
-        with Session(db.engine, expire_on_commit=False) as session:
-            tenant_join_query = select(TenantAccountJoin).where(
-                TenantAccountJoin.tenant_id == tenant.id, TenantAccountJoin.account_id == self.id
+        self.set_current_tenant(tenant)
+
+    def set_current_tenant(self, tenant: "Tenant", session: Session | scoped_session | None = None) -> None:
+        """Set the current tenant and load role from TenantAccountJoin.
+
+        When a *session* is provided, the join query runs in that session
+        (keeping it consistent with the caller's transaction).  The actual
+        tenant object is always reloaded with ``expire_on_commit=False`` so it
+        stays usable after the caller's session has been closed (avoiding
+        ``DetachedInstanceError``).
+
+        When no *session* is given (e.g. the property setter caller), a
+        standalone session is created automatically.
+        """
+        if session is not None:
+            tenant_join = session.scalar(
+                select(TenantAccountJoin).where(
+                    TenantAccountJoin.tenant_id == tenant.id, TenantAccountJoin.account_id == self.id
+                )
             )
-            tenant_join = session.scalar(tenant_join_query)
+        else:
+            tenant_join = None
+
+        with Session(db.engine, expire_on_commit=False) as fresh_session:
+            if tenant_join is None:
+                tenant_join = fresh_session.scalar(
+                    select(TenantAccountJoin).where(
+                        TenantAccountJoin.tenant_id == tenant.id, TenantAccountJoin.account_id == self.id
+                    )
+                )
             tenant_query = select(Tenant).where(Tenant.id == tenant.id)
-            # TODO: A workaround to reload the tenant with `expire_on_commit=False`, allowing
+            # Reload the tenant with expire_on_commit=False, allowing
             # access to it after the session has been closed.
-            # This prevents `DetachedInstanceError` when accessing the tenant outside
+            # This prevents DetachedInstanceError when accessing the tenant outside
             # the session's lifecycle.
-            # (The `tenant` argument is typically loaded by `db.session` without the
-            # `expire_on_commit=False` flag, meaning its lifetime is tied to the web
-            # request's lifecycle.)
-            tenant_reloaded = session.scalars(tenant_query).one()
+            # (The *tenant* argument is typically loaded by a caller session without
+            # expire_on_commit=False, meaning its lifetime would normally be tied to
+            # the web request's lifecycle.)
+            tenant_reloaded = fresh_session.scalars(tenant_query).one()
 
         if tenant_join:
             self.role = TenantAccountRole(tenant_join.role)
