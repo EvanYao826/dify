@@ -219,15 +219,27 @@ const FormInputItem: FC<Props> = ({
     })
   }
 
-  const handleVariableSelectorChange = (newValue: ValueSelector | string, variable: string) => {
-    onChange({
-      ...value,
-      [variable]: {
-        ...varInput,
-        type: VarKindType.variable,
-        value: normalizeVariableSelectorValue(newValue),
-      },
-    })
+  const handleVariableSelectorChange = (newValue: ValueSelector | string, varKindType: VarKindType, variable: string) => {
+    const isCleared = Array.isArray(newValue) ? newValue.length === 0 : !newValue
+    if (isCleared || varKindType === VarKindType.constant) {
+      onChange({
+        ...value,
+        [variable]: {
+          type: VarKindType.constant,
+          value: null,
+        },
+      })
+    }
+    else {
+      onChange({
+        ...value,
+        [variable]: {
+          ...varInput,
+          type: VarKindType.variable,
+          value: normalizeVariableSelectorValue(newValue),
+        },
+      })
+    }
   }
 
   const availableCheckboxOptions = useMemo(
@@ -418,7 +430,7 @@ const FormInputItem: FC<Props> = ({
           isShowNodeName
           nodeId={nodeId}
           value={varInput?.value || []}
-          onChange={value => handleVariableSelectorChange(value, variable)}
+          onChange={(value, varKindType) => handleVariableSelectorChange(value, varKindType, variable)}
           filterVar={getFilterVar(formState)}
           schema={schema}
           valueTypePlaceHolder={getTargetVarType(formState)}

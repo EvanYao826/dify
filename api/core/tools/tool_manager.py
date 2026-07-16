@@ -1099,6 +1099,16 @@ class ToolManager:
 
                     if not (config and isinstance(config, dict) and config.get("value") is not None):
                         continue
+
+                    # Defense: skip invalid variable configurations with empty/non-list values
+                    # (e.g. {"type": "variable", "value": ""} from frontend clear actions)
+                    if (
+                        config.get("type") == "variable"
+                        and isinstance(config, dict)
+                        and not isinstance(config.get("value"), list)
+                    ):
+                        continue
+
                     tool_input = ToolNodeData.ToolInput.model_validate(tool_configurations.get(parameter.name, {}))
                     if tool_input.type == "variable":
                         variable_selector = tool_input.value

@@ -1720,6 +1720,50 @@ class WorkflowService:
             # Cannot delete a workflow that's published as a tool
             raise WorkflowInUseError("Cannot delete workflow that is published as a tool")
 
+        # Check if any other published workflow references this workflow as a tool
+        # Find all WorkflowToolProvider entries tied to this workflow
+        workflow_providers = session.scalars(
+            select(WorkflowToolProvider).where(
+                WorkflowToolProvider.tenant_id == workflow.tenant_id,
+                WorkflowToolProvider.app_id == workflow.app_id,
+            )
+        ).all()
+
+        if workflow_providers:
+            provider_ids = [wp.id for wp in workflow_providers]
+
+            # Query all published (non-draft) workflows in the same tenant
+            # that are not this workflow itself, and that may reference any of
+            # the provider IDs in their graph JSON.
+            referencing_workflows = session.scalars(
+                select(Workflow).where(
+                    Workflow.tenant_id == workflow.tenant_id,
+                    Workflow.version != Workflow.VERSION_DRAFT,
+                    Workflow.id != workflow.id,
+                )
+            ).all()
+
+            referencing_workflow_names: list[str] = []
+            for ref_wf in referencing_workflows:
+                try:
+                    graph_data = json.loads(ref_wf.graph)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                nodes = graph_data.get("nodes", []) if isinstance(graph_data, dict) else []
+                for node in nodes:
+                    node_data = node.get("data", {}) if isinstance(node, dict) else {}
+                    provider_id = node_data.get("provider_id")
+                    provider_type = node_data.get("provider_type", "")
+                    if provider_id and provider_id in provider_ids and provider_type == "workflow":
+                        referencing_workflow_names.append(ref_wf.marked_name or ref_wf.id)
+                        break
+
+            if referencing_workflow_names:
+                raise WorkflowInUseError(
+                    f"Cannot delete workflow that is referenced by {len(referencing_workflow_names)} "
+                    f"published workflow(s): {', '.join(referencing_workflow_names)}"
+                )
+
         session.delete(workflow)
         return True
 
